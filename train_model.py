@@ -2,6 +2,34 @@ from __future__ import print_function
 import tensorflow as tf
 import os
 
+def freeze_session(session, keep_var_names=None, output_names=None, clear_devices=True):
+    """
+    Freezes the state of a session into a pruned computation graph.
+
+    Creates a new computation graph where variable nodes are replaced by
+    constants taking their current value in the session. The new graph will be
+    pruned so subgraphs that are not necessary to compute the requested
+    outputs are removed.
+    @param session The TensorFlow session to be frozen.
+    @param keep_var_names A list of variable names that should not be frozen,
+                          or None to freeze all the variables in the graph.
+    @param output_names Names of the relevant graph outputs.
+    @param clear_devices Remove the device directives from the graph for better portability.
+    @return The frozen graph definition.
+    """
+    graph = session.graph
+    with graph.as_default():
+        freeze_var_names = list(set(v.op.name for v in tf.compat.v1.global_variables()).difference(keep_var_names or []))
+        output_names = output_names or []
+        output_names += [v.op.name for v in tf.compat.v1.global_variables()]
+        input_graph_def = graph.as_graph_def()
+        if clear_devices:
+            for node in input_graph_def.node:
+                node.device = ""
+        frozen_graph = tf.compat.v1.graph_util.convert_variables_to_constants(
+            session, input_graph_def, output_names, freeze_var_names)
+        return frozen_graph
+
 batch_size = 32
 num_classes = 10
 epochs = 100
@@ -44,10 +72,12 @@ model.add(tf.keras.layers.Activation('softmax'))
 
 opt = tf.keras.optimizers.RMSprop(learning_rate = 0.0001, decay = 1e-6)
 
+#compile model with categorical crossentropy
 model.compile(loss='categorical_crossentropy',
               optimizer=opt,
               metrics=['accuracy'])
 
+# set input to float32 for inputs
 x_train = x_train.astype('float32')
 x_test = x_test.astype('float32')
 x_train /= 255
@@ -62,7 +92,7 @@ if not data_augmentation:
               shuffle=True)
 else:
     print('Using real-time data augmentation.')
-    # execute data augmentation and apply filters for more challenging training. e.g. filters, horizontal and vertical flips, etc.
+    # execute data augmentation and apply filters for more distribution. e.g. filters, horizontal and vertical flips, etc.
     datagen = tf.keras.preprocessing.image.ImageDataGenerator(
         featurewise_center=False,  # set input mean to 0 over the dataset
         samplewise_center=False,  # set each sample mean to 0
@@ -70,10 +100,10 @@ else:
         samplewise_std_normalization=False,  # divide each input by its std
         zca_whitening=False,  # apply ZCA filters
         zca_epsilon=1e-06,  # epsilon for ZCA filters
-        rotation_range=0,  # randomly rotate images in the range (degrees, 0 to 180)
-        # randomly shift images horizontally (fraction of total width)
+        rotation_range=0,  # randomly rotate images
+        # randomly shift images horizontally 
         width_shift_range=0.1,
-        # randomly shift images vertically (fraction of total height)
+        # randomly shift images vertically 
         height_shift_range=0.1,
         shear_range=0.,  # set range for random shear
         zoom_range=0.,  # set range for random zoom
@@ -113,3 +143,7 @@ print('Saved trained model at %s ' % model_path)
 scores = model.evaluate(x_test, y_test, verbose=1)
 print('Test loss:', scores[0])
 print('Test accuracy:', scores[1])
+
+frozen_graph = freeze_session(tf.compat.v1.keras.backend.get_session(),
+                              output_names=[out.op.name for out in model.outputs])
+tf.compat.v1.train.write_graph(frozen_graph, "models", "model.pb", as_text=False)
