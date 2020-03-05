@@ -99,7 +99,7 @@ else:
 
     # apply previous filters to x_train data
     datagen.fit(x_train)
-    
+
     # datagen will generate batches and the model will fit on them
     model.fit_generator(datagen.flow(x_train, y_train,
                                      batch_size=batch_size),
@@ -112,6 +112,11 @@ if not os.path.isdir(save_dir):
     os.makedirs(save_dir)
 model_path = os.path.join(save_dir, model_name)
 model.save(model_path)
+
+#save json
+model_json = model.to_json()
+with open("model.json", "w") as json_file:
+    json_file.write(model_json)
 print('Saved trained model at %s ' % model_path)
 
 # apply scores to trained model.
