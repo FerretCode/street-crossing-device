@@ -1,38 +1,11 @@
 from __future__ import print_function
 import tensorflow as tf
 import os
-
-def freeze_session(session, keep_var_names=None, output_names=None, clear_devices=True):
-    """
-    Freezes the state of a session into a pruned computation graph.
-
-    Creates a new computation graph where variable nodes are replaced by
-    constants taking their current value in the session. The new graph will be
-    pruned so subgraphs that are not necessary to compute the requested
-    outputs are removed.
-    @param session The TensorFlow session to be frozen.
-    @param keep_var_names A list of variable names that should not be frozen,
-                          or None to freeze all the variables in the graph.
-    @param output_names Names of the relevant graph outputs.
-    @param clear_devices Remove the device directives from the graph for better portability.
-    @return The frozen graph definition.
-    """
-    graph = session.graph
-    with graph.as_default():
-        freeze_var_names = list(set(v.op.name for v in tf.compat.v1.global_variables()).difference(keep_var_names or []))
-        output_names = output_names or []
-        output_names += [v.op.name for v in tf.compat.v1.global_variables()]
-        input_graph_def = graph.as_graph_def()
-        if clear_devices:
-            for node in input_graph_def.node:
-                node.device = ""
-        frozen_graph = tf.compat.v1.graph_util.convert_variables_to_constants(
-            session, input_graph_def, output_names, freeze_var_names)
-        return frozen_graph
+import datetime
 
 batch_size = 32
 num_classes = 10
-epochs = 100
+epochs = 15
 data_augmentation = True
 num_predictions = 20
 save_dir = os.path.join(os.getcwd(), 'saved_models')
@@ -69,6 +42,8 @@ model.add(tf.keras.layers.Activation('relu'))
 model.add(tf.keras.layers.Dropout(0.5))
 model.add(tf.keras.layers.Dense(num_classes))
 model.add(tf.keras.layers.Activation('softmax'))
+
+print(model.summary())
 
 opt = tf.keras.optimizers.RMSprop(learning_rate = 0.0001, decay = 1e-6)
 
@@ -124,7 +99,7 @@ else:
 
     # apply previous filters to x_train data
     datagen.fit(x_train)
-
+    
     # datagen will generate batches and the model will fit on them
     model.fit_generator(datagen.flow(x_train, y_train,
                                      batch_size=batch_size),
@@ -143,7 +118,3 @@ print('Saved trained model at %s ' % model_path)
 scores = model.evaluate(x_test, y_test, verbose=1)
 print('Test loss:', scores[0])
 print('Test accuracy:', scores[1])
-
-frozen_graph = freeze_session(tf.compat.v1.keras.backend.get_session(),
-                              output_names=[out.op.name for out in model.outputs])
-tf.compat.v1.train.write_graph(frozen_graph, "models", "model.pb", as_text=False)
